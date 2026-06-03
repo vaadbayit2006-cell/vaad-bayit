@@ -234,8 +234,13 @@ const uploadToDrive = async (file, folderKey) => {
     formData.append("file", file);
     formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
     formData.append("folder", `vaad-bayit/${folderKey || 'general'}`);
+
+    // בחר resource_type נכון
+    const isPdf = file.type === 'application/pdf';
+    const resourceType = isPdf ? 'raw' : 'auto';
+
     const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`,
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/${resourceType}/upload`,
       { method: "POST", body: formData }
     );
     if (!res.ok) throw new Error(await res.text());
@@ -1939,9 +1944,7 @@ const Protocols = ({ data, setData, isCommittee }) => {
   // תיקון URL לקובץ - PDF ב-Cloudinary צריך fl_attachment
   const getFileUrl = (f) => {
     if (!f.url || f.url === '#') return '#';
-    if (f.url.includes('cloudinary.com') && f.name?.toLowerCase().endsWith('.pdf')) {
-      return f.url.replace('/upload/', '/upload/fl_attachment/');
-    }
+    // raw PDFs ב-Cloudinary נפתחים ישירות
     return f.url;
   };
 
