@@ -1944,7 +1944,10 @@ const Protocols = ({ data, setData, isCommittee }) => {
   // תיקון URL לקובץ - PDF ב-Cloudinary צריך fl_attachment
   const getFileUrl = (f) => {
     if (!f.url || f.url === '#') return '#';
-    // raw PDFs ב-Cloudinary נפתחים ישירות
+    if (f.name?.toLowerCase().endsWith('.pdf')) {
+      // פתח PDF דרך Google Drive Viewer
+      return `https://docs.google.com/viewer?url=${encodeURIComponent(f.url)}&embedded=false`;
+    }
     return f.url;
   };
 
