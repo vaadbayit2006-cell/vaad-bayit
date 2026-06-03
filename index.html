@@ -195,7 +195,6 @@ const realGoogleLogin = () => {
         "openid",
         "email",
         "profile",
-        "https://www.googleapis.com/auth/drive.file",
       ].join(" "),
       callback: async (tokenResponse) => {
         if (tokenResponse.error) { reject(tokenResponse); return; }
@@ -223,62 +222,33 @@ const realGoogleLogin = () => {
 // ============================================================
 // FILE UPLOAD TO GOOGLE DRIVE — אמיתי
 // ============================================================
-const uploadToDrive = async (file, folderKey, accessToken) => {
-  let token = accessToken || getAccessToken();
-  const folderId = DRIVE_FOLDERS[folderKey] || DRIVE_FOLDERS.main || null;
+// ============================================================
+// FILE UPLOAD TO CLOUDINARY — נקודת אחסון מרכזית
+// ============================================================
+const CLOUDINARY_CLOUD = "dra4ky4tk";
+const CLOUDINARY_UPLOAD_PRESET = "vaad_bayit_unsigned";
 
-  // אם אין טוקן — בקש חדש בשקט
-  if (!token) {
-    try {
-      token = await new Promise((resolve, reject) => {
-        if (!window.google) { reject("GIS not loaded"); return; }
-        const client = window.google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CLIENT_ID,
-          scope: "https://www.googleapis.com/auth/drive.file",
-          callback: (resp) => {
-            if (resp.error) reject(resp);
-            else { _googleAccessToken = resp.access_token; resolve(resp.access_token); }
-          },
-        });
-        client.requestAccessToken({ prompt: "" }); // ללא popup אם כבר אושר
-      });
-    } catch(e) {
-      console.warn("לא ניתן לקבל token:", e);
-      return { id: "no_token", name: file.name, url: "#", webViewLink: "#", error: "לא מחובר ל-Google" };
-    }
-  }
-
+const uploadToDrive = async (file, folderKey) => {
   try {
-    const metadata = { name: file.name, ...(folderId ? { parents: [folderId] } : {}) };
-    const form = new FormData();
-    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-    form.append("file", file);
-
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    formData.append("folder", `vaad-bayit/${folderKey || 'general'}`);
     const res = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
-      { method: "POST", headers: { Authorization: "Bearer " + token }, body: form }
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`,
+      { method: "POST", body: formData }
     );
     if (!res.ok) throw new Error(await res.text());
-    const driveData = await res.json();
-
-    // הפוך לציבורי (כל מי שיש לו קישור יכול לצפות)
-    try {
-      await fetch(`https://www.googleapis.com/drive/v3/files/${driveData.id}/permissions`, {
-        method: "POST",
-        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "reader", type: "anyone" }),
-      });
-    } catch(e) { console.warn("לא הצלחנו להפוך לציבורי:", e); }
-
+    const data = await res.json();
     return {
-      id: driveData.id,
-      name: driveData.name,
-      url: "https://drive.google.com/file/d/" + driveData.id + "/view",
-      webViewLink: driveData.webViewLink || "https://drive.google.com/file/d/" + driveData.id + "/view",
+      id: data.public_id,
+      name: file.name,
+      url: data.secure_url,
+      webViewLink: data.secure_url,
     };
   } catch (err) {
-    console.error("שגיאה בהעלאה ל-Drive:", err);
-    return { id: "local_" + Date.now(), name: file.name, url: "#", webViewLink: "#", saved: "locally" };
+    console.error("שגיאה בהעלאה ל-Cloudinary:", err);
+    return { id: "local_" + Date.now(), name: file.name, url: "#", webViewLink: "#" };
   }
 };
 
