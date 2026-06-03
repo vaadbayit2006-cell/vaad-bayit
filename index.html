@@ -195,7 +195,7 @@ const realGoogleLogin = () => {
         "openid",
         "email",
         "profile",
-        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.file",
       ].join(" "),
       callback: async (tokenResponse) => {
         if (tokenResponse.error) { reject(tokenResponse); return; }
@@ -234,7 +234,7 @@ const uploadToDrive = async (file, folderKey, accessToken) => {
         if (!window.google) { reject("GIS not loaded"); return; }
         const client = window.google.accounts.oauth2.initTokenClient({
           client_id: GOOGLE_CLIENT_ID,
-          scope: "https://www.googleapis.com/auth/drive",
+          scope: "https://www.googleapis.com/auth/drive.file",
           callback: (resp) => {
             if (resp.error) reject(resp);
             else { _googleAccessToken = resp.access_token; resolve(resp.access_token); }
@@ -387,7 +387,7 @@ const FileUploader = ({ onUpload, label = "העלה קובץ", folderKey = "main
         token = await new Promise((resolve, reject) => {
           const client = window.google.accounts.oauth2.initTokenClient({
             client_id: GOOGLE_CLIENT_ID,
-            scope: "https://www.googleapis.com/auth/drive",
+            scope: "https://www.googleapis.com/auth/drive.file",
             callback: (resp) => {
               if (resp.error) reject(resp);
               else { _googleAccessToken = resp.access_token; resolve(resp.access_token); }
