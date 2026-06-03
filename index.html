@@ -229,44 +229,61 @@ const CLOUDINARY_CLOUD = "dra4ky4tk";
 const CLOUDINARY_UPLOAD_PRESET = "vaad_bayit_unsigned";
 
 const uploadToDrive = async (file, folderKey) => {
-  try {
-    // PDF קטן — שמור כ-base64 ישירות
-    if (file.type === 'application/pdf' && file.size < 500000) {
-      const base64 = await new Promise(resolve => {
-        const reader = new FileReader();
-        reader.onload = e => resolve(e.target.result);
-        reader.readAsDataURL(file);
+  const folderId = DRIVE_FOLDERS[folderKey] || DRIVE_FOLDERS.main || null;
+
+  // בקש Google token רק בעת העלאת קובץ
+  let token = getAccessToken();
+  if (!token) {
+    try {
+      token = await new Promise((resolve, reject) => {
+        if (!window.google) { reject("GIS not loaded"); return; }
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: "https://www.googleapis.com/auth/drive.file",
+          callback: (resp) => {
+            if (resp.error) reject(resp);
+            else { _googleAccessToken = resp.access_token; resolve(resp.access_token); }
+          },
+        });
+        client.requestAccessToken({ prompt: "consent" });
       });
-      return {
-        id: "local_" + Date.now(),
-        name: file.name,
-        url: base64,
-        webViewLink: base64,
-        isBase64: true,
-      };
+    } catch(e) {
+      console.warn("לא ניתן לקבל token:", e);
+      // fallback: שמור locally
+      return { id: "local_" + Date.now(), name: file.name, url: "#", webViewLink: "#" };
     }
+  }
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-    formData.append("folder", `vaad-bayit/${folderKey || 'general'}`);
-
-    const resourceType = file.type === 'application/pdf' ? 'raw' : 'auto';
+  try {
+    const metadata = { name: file.name, ...(folderId ? { parents: [folderId] } : {}) };
+    const form = new FormData();
+    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+    form.append("file", file);
 
     const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/${resourceType}/upload`,
-      { method: "POST", body: formData }
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
+      { method: "POST", headers: { Authorization: "Bearer " + token }, body: form }
     );
     if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
+    const driveData = await res.json();
+
+    // הפוך לציבורי
+    try {
+      await fetch(`https://www.googleapis.com/drive/v3/files/${driveData.id}/permissions`, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "reader", type: "anyone" }),
+      });
+    } catch(e) { console.warn("לא הצלחנו להפוך לציבורי:", e); }
+
     return {
-      id: data.public_id,
-      name: file.name,
-      url: data.secure_url,
-      webViewLink: data.secure_url,
+      id: driveData.id,
+      name: driveData.name,
+      url: "https://drive.google.com/file/d/" + driveData.id + "/view",
+      webViewLink: "https://drive.google.com/file/d/" + driveData.id + "/view",
     };
   } catch (err) {
-    console.error("שגיאה בהעלאה ל-Cloudinary:", err);
+    console.error("שגיאה בהעלאה ל-Drive:", err);
     return { id: "local_" + Date.now(), name: file.name, url: "#", webViewLink: "#" };
   }
 };
@@ -370,7 +387,20 @@ const FileUploader = ({ onUpload, label = "העלה קובץ", folderKey = "main
     }
 
     try {
-      const result = await uploadToDrive(file, folderKey);
+      let result;
+      if (file.type.startsWith("image/")) {
+        // תמונות → Cloudinary
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+        formData.append("folder", `vaad-bayit/${folderKey || 'general'}`);
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`, { method: "POST", body: formData });
+        const data = await res.json();
+        result = { id: data.public_id, name: file.name, url: data.secure_url, webViewLink: data.secure_url };
+      } else {
+        // PDF ומסמכים → Google Drive
+        result = await uploadToDrive(file, folderKey);
+      }
       setUploaded(result);
       onUpload(result, base64Preview);
     } catch(err) {
@@ -1958,10 +1988,6 @@ const Protocols = ({ data, setData, isCommittee }) => {
   // תיקון URL לקובץ - PDF ב-Cloudinary צריך fl_attachment
   const getFileUrl = (f) => {
     if (!f.url || f.url === '#') return '#';
-    // base64 PDF — נפתח ישירות
-    if (f.isBase64 || f.url.startsWith('data:')) return f.url;
-    // PDF ב-Cloudinary — נוריד
-    if (f.name?.toLowerCase().endsWith('.pdf')) return f.url;
     return f.url;
   };
 
