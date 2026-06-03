@@ -2269,8 +2269,8 @@ const Residents = ({ data, setData, user, isCommittee }) => {
                   {isCommittee && (
                     <div className="flex gap-1 mt-1">
                       <button onClick={e => { e.stopPropagation(); setEditResident({...r}); }}
-                        className="p-1.5 bg-gray-100 hover:bg-indigo-100 text-gray-400 hover:text-indigo-600 rounded-lg transition-all">
-                        <Icon name="edit" size={13}/>
+                        className="flex items-center gap-1 text-xs px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg font-semibold transition-all">
+                        <Icon name="edit" size={12}/> ערוך
                       </button>
                       {r.status === "pending" && (
                         <button onClick={e => { e.stopPropagation(); setData({...data, residents: data.residents.map(res => res.id === r.id ? {...res, status: "active"} : res)}); }}
