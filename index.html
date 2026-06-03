@@ -387,20 +387,22 @@ const FileUploader = ({ onUpload, label = "העלה קובץ", folderKey = "main
     }
 
     try {
-      let result;
-      if (file.type.startsWith("image/")) {
-        // תמונות → Cloudinary
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-        formData.append("folder", `vaad-bayit/${folderKey || 'general'}`);
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`, { method: "POST", body: formData });
-        const data = await res.json();
-        result = { id: data.public_id, name: file.name, url: data.secure_url, webViewLink: data.secure_url };
-      } else {
-        // PDF ומסמכים → Google Drive
-        result = await uploadToDrive(file, folderKey);
-      }
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+      formData.append("folder", `vaad-bayit/${folderKey || 'general'}`);
+      const resourceType = file.type.startsWith("image/") ? "image" : "raw";
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/${resourceType}/upload`,
+        { method: "POST", body: formData }
+      );
+      const data = await res.json();
+      const result = {
+        id: data.public_id || "local_" + Date.now(),
+        name: file.name,
+        url: data.secure_url || "#",
+        webViewLink: data.secure_url || "#",
+      };
       setUploaded(result);
       onUpload(result, base64Preview);
     } catch(err) {
