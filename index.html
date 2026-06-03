@@ -1969,7 +1969,9 @@ const Protocols = ({ data, setData, isCommittee }) => {
   const [showModal, setShowModal] = React.useState(false);
   const [editProtocol, setEditProtocol] = React.useState(null);
   const [aiLoading, setAiLoading] = React.useState(false);
-  const [form, setForm] = React.useState({ title: "", date: new Date().toISOString().split("T")[0], attendees: "", content: "", files: [] });
+  const emptyForm = { title: "", date: new Date().toISOString().split("T")[0], attendees: "", content: "", driveLink: "", files: [] };
+  const [form, setForm] = React.useState(emptyForm);
+  const [linkError, setLinkError] = React.useState("");
 
   const generateProtocol = async () => {
     setAiLoading(true);
@@ -1978,24 +1980,60 @@ const Protocols = ({ data, setData, isCommittee }) => {
     setAiLoading(false);
   };
 
+  const validateDriveLink = (url) => {
+    if (!url) return true;
+    return url.includes("drive.google.com") || url.includes("docs.google.com");
+  };
+
+  const normalizeDriveLink = (url) => {
+    if (!url) return url;
+    // המר קישור עריכה לקישור צפייה
+    url = url.trim();
+    const matchId = url.match(/\/d\/([-\w]+)/);
+    if (matchId) {
+      return `https://drive.google.com/file/d/${matchId[1]}/view?usp=sharing`;
+    }
+    return url;
+  };
+
   const handleAdd = () => {
-    const protocol = { ...form, id: Date.now() };
+    if (form.driveLink && !validateDriveLink(form.driveLink)) {
+      setLinkError("הקישור אינו תקין — חייב להיות מגוגל דרייב");
+      return;
+    }
+    setLinkError("");
+    const protocol = { ...form, driveLink: normalizeDriveLink(form.driveLink), id: Date.now() };
     setData({ ...data, protocols: [...data.protocols, protocol] });
     setShowModal(false);
-    setForm({ title: "", date: new Date().toISOString().split("T")[0], attendees: "", content: "", files: [] });
+    setForm(emptyForm);
   };
 
   const handleEdit = () => {
     if (!editProtocol) return;
-    setData({ ...data, protocols: data.protocols.map(p => p.id === editProtocol.id ? editProtocol : p) });
+    if (editProtocol.driveLink && !validateDriveLink(editProtocol.driveLink)) {
+      alert("הקישור אינו תקין — חייב להיות מגוגל דרייב");
+      return;
+    }
+    const updated = { ...editProtocol, driveLink: normalizeDriveLink(editProtocol.driveLink) };
+    setData({ ...data, protocols: data.protocols.map(p => p.id === updated.id ? updated : p) });
     setEditProtocol(null);
   };
 
-  // תיקון URL לקובץ - PDF ב-Cloudinary צריך fl_attachment
   const getFileUrl = (f) => {
     if (!f.url || f.url === '#') return '#';
     return f.url;
   };
+
+  // הוראות Drive לועד
+  const DriveInstructions = () => (
+    <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700 space-y-1.5 mb-1">
+      <p className="font-semibold text-blue-800">איך מעלים ל-Drive ומקבלים קישור שיתוף:</p>
+      <p>1. פתח את Drive של הועד: <a href="https://drive.google.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">drive.google.com</a></p>
+      <p>2. העלה את קובץ ה-PDF לתיקיית "פרוטוקולים"</p>
+      <p>3. לחץ ימני על הקובץ ← "שתף" ← "כל מי שיש לו קישור יכול לצפות"</p>
+      <p>4. לחץ "העתק קישור" והדבק כאן למטה</p>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -2009,7 +2047,7 @@ const Protocols = ({ data, setData, isCommittee }) => {
       </div>
       {!isCommittee && (
         <div className="p-3 bg-blue-50 rounded-xl text-xs text-blue-600 flex items-center gap-2">
-          <span>👁️</span> צפייה בלבד
+          <span>👁️</span> צפייה בלבד — לחץ על "פתח PDF" לצפייה בכל פרוטוקול
         </div>
       )}
 
@@ -2038,14 +2076,30 @@ const Protocols = ({ data, setData, isCommittee }) => {
                   </div>
                 )}
               </div>
-              <p className="text-xs text-gray-600 line-clamp-2">{p.content}</p>
+              {p.content && <p className="text-xs text-gray-600 line-clamp-2 mb-2">{p.content}</p>}
+
+              {/* קישור Drive — הדבר הכי חשוב */}
+              {p.driveLink && p.driveLink !== '#' ? (
+                <a href={p.driveLink} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-3 py-1.5 rounded-lg transition-all mt-1">
+                  <Icon name="file" size={13} /> פתח PDF בגוגל דרייב
+                </a>
+              ) : (
+                isCommittee && (
+                  <span className="text-xs text-amber-500 bg-amber-50 px-2 py-1 rounded-lg">⚠️ קישור Drive חסר — ערוך כדי להוסיף</span>
+                )
+              )}
+
+              {/* קבצים ישנים (fallback) */}
               {p.files?.length > 0 && (
                 <div className="mt-2 flex gap-2 flex-wrap">
                   {p.files.map((f, i) => (
-                    <a key={i} href={getFileUrl(f)} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-indigo-500 bg-indigo-50 px-2 py-1 rounded-lg hover:bg-indigo-100">
-                      📄 {f.name}
-                    </a>
+                    f.url && f.url !== '#' && (
+                      <a key={i} href={getFileUrl(f)} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-indigo-500 bg-indigo-50 px-2 py-1 rounded-lg hover:bg-indigo-100">
+                        📄 {f.name}
+                      </a>
+                    )
                   ))}
                 </div>
               )}
@@ -2067,34 +2121,55 @@ const Protocols = ({ data, setData, isCommittee }) => {
             <input className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm"
               placeholder="נוכחים" value={editProtocol.attendees || ''}
               onChange={e => setEditProtocol({...editProtocol, attendees: e.target.value})} />
-            <textarea className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none" rows={5}
+            <textarea className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none" rows={4}
               value={editProtocol.content || ''}
               onChange={e => setEditProtocol({...editProtocol, content: e.target.value})} />
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-1.5">🔗 קישור PDF מגוגל דרייב</label>
+              <input className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm"
+                placeholder="https://drive.google.com/file/d/..."
+                value={editProtocol.driveLink || ''}
+                onChange={e => setEditProtocol({...editProtocol, driveLink: e.target.value})} />
+              <p className="text-xs text-gray-400 mt-1">הקישור יהיה גלוי לכל דיירי הבניין</p>
+            </div>
             <Button onClick={handleEdit} className="w-full justify-center">💾 שמור שינויים</Button>
           </div>
         )}
       </Modal>
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="פרוטוקול חדש">
+      {/* New Protocol Modal */}
+      <Modal open={showModal} onClose={() => { setShowModal(false); setLinkError(""); }} title="📋 פרוטוקול חדש">
         <div className="space-y-4">
           <input className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm" placeholder="כותרת הישיבה" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           <input type="date" className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
           <input className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm" placeholder="נוכחים (שמות)" value={form.attendees} onChange={(e) => setForm({ ...form, attendees: e.target.value })} />
+          
+          {/* קישור Drive — העיקרי */}
+          <div>
+            <label className="text-sm font-semibold text-gray-700 block mb-2">🔗 קישור PDF מגוגל דרייב</label>
+            <DriveInstructions />
+            <input className={`w-full border rounded-xl px-4 py-3 text-sm ${linkError ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+              placeholder="https://drive.google.com/file/d/..."
+              value={form.driveLink}
+              onChange={(e) => { setForm({ ...form, driveLink: e.target.value }); setLinkError(""); }} />
+            {linkError && <p className="text-xs text-red-500 mt-1">{linkError}</p>}
+            {form.driveLink && validateDriveLink(form.driveLink) && (
+              <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1"><Icon name="check" size={12}/> קישור תקין</p>
+            )}
+          </div>
+
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-semibold text-gray-700">תוכן הפרוטוקול</label>
+              <label className="text-sm font-semibold text-gray-700">תיאור קצר (אופציונלי)</label>
               <Button onClick={generateProtocol} variant="secondary" size="sm" disabled={aiLoading || !form.content}>
                 {aiLoading ? "מייצר..." : "✨ Claude יכתוב"}
               </Button>
             </div>
-            <textarea className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none" rows={6} placeholder="הזן נושאי דיון או תוכן הפרוטוקול..." value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
+            <textarea className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none" rows={4} placeholder="נושאי דיון, החלטות עיקריות..." value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
           </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-700 mb-2">קבצים מצורפים</p>
-            <FileUploader onUpload={(file) => setForm({ ...form, files: [...form.files, file] })} folderKey="protocols" />
-          </div>
+
           <Button onClick={handleAdd} className="w-full justify-center" disabled={!form.title}>
-            שמירה
+            <Icon name="check" size={16}/> שמור פרוטוקול
           </Button>
         </div>
       </Modal>
