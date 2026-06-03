@@ -230,14 +230,28 @@ const CLOUDINARY_UPLOAD_PRESET = "vaad_bayit_unsigned";
 
 const uploadToDrive = async (file, folderKey) => {
   try {
+    // PDF קטן — שמור כ-base64 ישירות
+    if (file.type === 'application/pdf' && file.size < 500000) {
+      const base64 = await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.readAsDataURL(file);
+      });
+      return {
+        id: "local_" + Date.now(),
+        name: file.name,
+        url: base64,
+        webViewLink: base64,
+        isBase64: true,
+      };
+    }
+
     const formData = new FormData();
     formData.append("file", file);
     formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
     formData.append("folder", `vaad-bayit/${folderKey || 'general'}`);
 
-    // בחר resource_type נכון
-    const isPdf = file.type === 'application/pdf';
-    const resourceType = isPdf ? 'raw' : 'auto';
+    const resourceType = file.type === 'application/pdf' ? 'raw' : 'auto';
 
     const res = await fetch(
       `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/${resourceType}/upload`,
@@ -1944,10 +1958,10 @@ const Protocols = ({ data, setData, isCommittee }) => {
   // תיקון URL לקובץ - PDF ב-Cloudinary צריך fl_attachment
   const getFileUrl = (f) => {
     if (!f.url || f.url === '#') return '#';
-    if (f.name?.toLowerCase().endsWith('.pdf')) {
-      // פתח PDF דרך Google Drive Viewer
-      return `https://docs.google.com/viewer?url=${encodeURIComponent(f.url)}&embedded=false`;
-    }
+    // base64 PDF — נפתח ישירות
+    if (f.isBase64 || f.url.startsWith('data:')) return f.url;
+    // PDF ב-Cloudinary — נוריד
+    if (f.name?.toLowerCase().endsWith('.pdf')) return f.url;
     return f.url;
   };
 
